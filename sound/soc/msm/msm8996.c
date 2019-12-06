@@ -63,6 +63,8 @@
 
 #define WSA8810_NAME_1 "wsa881x.20170211"
 #define WSA8810_NAME_2 "wsa881x.20170212"
+#define NCX_VTG_MIN_UV	3000000
+#define NCX_VTG_MAX_UV	3000000
 
 static int slim0_rx_sample_rate = SAMPLING_RATE_48KHZ;
 static int slim0_tx_sample_rate = SAMPLING_RATE_48KHZ;
@@ -337,6 +339,7 @@ static int hdmi_rx_sample_rate = SAMPLING_RATE_48KHZ;
 static int msm_tert_mi2s_tx_ch = 2;
 
 static bool codec_reg_done;
+u64 wsa_dev_id;
 
 static const char *const hifi_function[] = {"Off", "On"};
 static const char *const pin_states[] = {"Disable", "active"};
@@ -474,10 +477,10 @@ static struct wcd_mbhc_config wcd_mbhc_cfg = {
 	.mono_stero_detection = false,
 	.swap_gnd_mic = NULL,
 	.hs_ext_micbias = true,
-	.key_code[0] = KEY_MEDIA,
-	.key_code[1] = KEY_VOICECOMMAND,
-	.key_code[2] = KEY_VOLUMEUP,
-	.key_code[3] = KEY_VOLUMEDOWN,
+	.key_code[0] = BTN_0,
+	.key_code[1] = BTN_1,
+	.key_code[2] = BTN_2,
+	.key_code[3] = BTN_3,
 	.key_code[4] = 0,
 	.key_code[5] = 0,
 	.key_code[6] = 0,
@@ -488,6 +491,39 @@ static struct wcd_mbhc_config wcd_mbhc_cfg = {
 	.anc_micbias = MIC_BIAS_2,
 	.enable_anc_mic_detect = false,
 };
+
+#define HEADSET_TYPE_STANDARD
+#ifdef HEADSET_TYPE_STANDARD
+static int gnd_mic_gpio_state = -1;
+static int headset_standard_get = 0;
+static int headset_type_standard = -1; // 0 America, 1 Europe standard
+static int headset_standard_get_parm_set(const char *val, struct kernel_param *kp)
+{
+	param_set_int(val, kp);
+	if (1 == headset_standard_get) {
+		if (-1 == gnd_mic_gpio_state)
+			headset_type_standard = 0;
+		else
+			headset_type_standard = gnd_mic_gpio_state;
+		printk(KERN_INFO "%s enter, headset_type_standard = %d\n",
+			   __func__, headset_type_standard);
+	} else {
+		printk(KERN_INFO "enter %s, clear the headset/headphone type\n", __func__);
+		headset_type_standard = -1;
+	}
+	return 0;
+}
+module_param_call(headset_standard_get, headset_standard_get_parm_set, param_get_int,
+				  &headset_standard_get, 0644);
+static int headset_type_standard_parm_set(const char *val, struct kernel_param *kp)
+{
+	param_set_int(val, kp);
+	return 0;
+}
+module_param_call(headset_type_standard, headset_type_standard_parm_set, param_get_int,
+				  &headset_type_standard, 0644);
+#endif
+
 
 static inline int param_is_mask(int p)
 {
@@ -5593,6 +5629,20 @@ static bool msm8996_swap_gnd_mic(struct snd_soc_codec *codec)
 
 	pr_debug("%s: swap select switch %d to %d\n", __func__, value, !value);
 	gpio_set_value_cansleep(pdata->us_euro_gpio, !value);
+	gnd_mic_gpio_state = !value;
+	return true;
+}
+
+static bool msm8996_default_gnd_mic(struct snd_soc_codec *codec)
+{
+	struct snd_soc_card *card = codec->component.card;
+	struct msm8996_asoc_mach_data *pdata =
+				snd_soc_card_get_drvdata(card);
+	int value = 0;
+
+	pr_debug("%s: set select switch to default value %d\n", __func__, value);
+	gpio_set_value_cansleep(pdata->us_euro_gpio, value);
+	gnd_mic_gpio_state = 0;
 	return true;
 }
 
@@ -8781,8 +8831,15 @@ static int msm8996_asoc_machine_probe(struct platform_device *pdev)
 	}
 
 	ret = msm8996_init_wsa_dev(pdev, card);
-	if (ret)
-		goto err;
+#if defined CONFIG_MACH_ZUK_Z2_PLUS
+	if (ret){
+		if(wsa_dev_id == 0x21170214)
+			printk("msm8996_init_wsa_dev wsa_dev_id:%llx\n", wsa_dev_id);
+		else{
+			goto err;
+		}
+	}
+#endif
 
 	pdata->hph_en1_gpio = of_get_named_gpio(pdev->dev.of_node,
 						"qcom,hph-en1-gpio", 0);
@@ -8847,6 +8904,7 @@ static int msm8996_asoc_machine_probe(struct platform_device *pdev)
 		dev_dbg(&pdev->dev, "%s detected %d",
 			"qcom,us-euro-gpios", pdata->us_euro_gpio);
 		wcd_mbhc_cfg.swap_gnd_mic = msm8996_swap_gnd_mic;
+		wcd_mbhc_cfg.default_gnd_mic = msm8996_default_gnd_mic;
 	}
 
 	ret = msm8996_prepare_us_euro(card);
