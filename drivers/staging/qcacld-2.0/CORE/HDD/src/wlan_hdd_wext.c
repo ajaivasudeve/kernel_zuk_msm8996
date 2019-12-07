@@ -5617,10 +5617,10 @@ int wlan_hdd_update_phymode(struct net_device *net, tHalHandle hal,
         }
 
         if (phddctx->cfg_ini->nChannelBondingMode5GHz)
-            phddctx->wiphy->bands[IEEE80211_BAND_5GHZ]->ht_cap.cap |=
+            phddctx->wiphy->bands[HDD_NL80211_BAND_5GHZ]->ht_cap.cap |=
                                               IEEE80211_HT_CAP_SUP_WIDTH_20_40;
         else
-            phddctx->wiphy->bands[IEEE80211_BAND_5GHZ]->ht_cap.cap &=
+            phddctx->wiphy->bands[HDD_NL80211_BAND_5GHZ]->ht_cap.cap &=
                                               ~IEEE80211_HT_CAP_SUP_WIDTH_20_40;
 
 
@@ -8865,7 +8865,7 @@ static int __iw_set_var_ints_getnone(struct net_device *dev,
                         __func__, apps_args[0], apps_args[1], apps_args[2],
                         apps_args[3], apps_args[4]);
                 if (hHal)
-                    return logPrintf(hHal, apps_args[0], apps_args[1],
+                    logPrintf(hHal, apps_args[0], apps_args[1],
                                      apps_args[2], apps_args[3], apps_args[4]);
 
             }
